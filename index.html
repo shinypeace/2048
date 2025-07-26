@@ -40,7 +40,7 @@
 
             --border-radius: 8px;
             --gap: 12px;
-            --anim-speed: 0.15s;
+            --anim-speed: 0.1s;
         }
 
         * {
@@ -146,11 +146,14 @@
         .light-theme .grid-cell { background-color: var(--light-cell-bg); }
         .dark-theme .grid-cell { background-color: var(--dark-cell-bg); }
         
-        #tile-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+        #tile-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         
-        body.hammer-mode .tile { cursor: pointer; box-shadow: 0 0 15px #ff4757; }
+        body.hammer-mode #tile-container { pointer-events: auto; }
+        body:not(.hammer-mode) #tile-container { pointer-events: none; }
 
-        .tile { --size: calc((100% - 5 * var(--gap)) / 4); position: absolute; width: var(--size); height: var(--size); top: calc(var(--row) * (var(--size) + var(--gap)) + var(--gap)); left: calc(var(--col) * (var(--size) + var(--gap)) + var(--gap)); border-radius: var(--border-radius); font-weight: 700; display: flex; justify-content: center; align-items: center; font-size: 2.5rem; transition: top var(--anim-speed) ease-in-out, left var(--anim-speed) ease-in-out; z-index: 10; }
+        body.hammer-mode .tile { cursor: pointer; box-shadow: 0 0 15px #ff4757; transform: scale(1.05); }
+
+        .tile { --size: calc((100% - 5 * var(--gap)) / 4); position: absolute; width: var(--size); height: var(--size); top: calc(var(--row) * (var(--size) + var(--gap)) + var(--gap)); left: calc(var(--col) * (var(--size) + var(--gap)) + var(--gap)); border-radius: var(--border-radius); font-weight: 700; display: flex; justify-content: center; align-items: center; font-size: 2.5rem; transition: top var(--anim-speed) ease-in-out, left var(--anim-speed) ease-in-out, transform 0.2s; z-index: 10; }
         .tile[data-value="2"] { background-color: var(--c-2); color: var(--t-2); } .tile[data-value="4"] { background-color: var(--c-4); color: var(--t-4); } .tile[data-value="8"] { background-color: var(--c-8); color: var(--t-8); } .tile[data-value="16"] { background-color: var(--c-16); color: var(--t-16); } .tile[data-value="32"] { background-color: var(--c-32); color: var(--t-32); } .tile[data-value="64"] { background-color: var(--c-64); color: var(--t-64); } .tile[data-value="128"] { background-color: var(--c-128); color: var(--t-128); } .tile[data-value="256"] { background-color: var(--c-256); color: var(--t-256); } .tile[data-value="512"] { background-color: var(--c-512); color: var(--t-512); } .tile[data-value="1024"] { background-color: var(--c-1024); color: var(--t-1024); font-size: 2rem; } .tile[data-value="2048"] { background-color: var(--c-2048); color: var(--t-2048); font-size: 2rem; } .tile[data-value="4096"] { background-color: var(--c-super); color: var(--t-super); font-size: 2rem; } .tile[data-value="8192"] { background-color: var(--c-super); color: var(--t-super); font-size: 1.8rem; }
         
         .tile.new { animation: appear 0.2s ease-in-out; }
@@ -211,7 +214,7 @@
                 </div>
                 <div class="game-controls">
                      <button id="hammer-btn" title="Убрать плитку (за рекламу)">
-                        <svg viewBox="0 0 24 24"><path d="M20.7,6.3C20.3,5.9,19.7,6,19.3,6.3L14,11.6L12.4,10L18.7,3.7C19.1,3.3,19,2.7,18.7,2.3C18.3,1.9,17.7,2,17.3,2.3L11,8.6L9.4,7L15.7,0.7C16.1,0.3,16, -0.3,15.7,-0.7C15.3,-1.1,14.7,-1,14.3,-0.7L2,11.6V20H10.4L21.7,8.7C22.1,8.3,22,7.7,21.7,7.3L20.7,6.3Z" /></svg>
+                        <svg viewBox="0 0 24 24"><path d="M20.7,6.3C20.3,5.9,19.7,6,19.3,6.3L14,11.6L12.4,10L18.7,3.7C19.1,3.3,19,2.7,18.7,2.3C18.3,1.9,17.7,2,17.3,2.3L11,8.6L9.4,7L15.7,0.7C16.1,0.3,16,-0.3,15.7,-0.7C15.3,-1.1,14.7,-1,14.3,-0.7L2,11.6V20H10.4L21.7,8.7C22.1,8.3,22,7.7,21.7,7.3L20.7,6.3Z" /></svg>
                         <span class="ad-label">AD</span>
                     </button>
                     <button id="pause-btn" title="Пауза">
@@ -232,32 +235,39 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- Начальные константы и переменные ---
             const GRID_SIZE = 4;
             const gameContainer = document.getElementById('game-container');
             const tileContainer = document.getElementById('tile-container');
             const currentScoreEl = document.getElementById('current-score');
             const bestScoreEl = document.getElementById('best-score');
             
-            let grid = []; let score = 0; let isGameOver = false; let isPaused = false; let isHammerModeActive = false;
+            let grid = []; 
+            let score = 0; 
+            let isGameOver = false; 
+            let isPaused = false; 
+            let isHammerModeActive = false;
             let touchStartX = 0, touchStartY = 0, touchEndX = 0, touchEndY = 0;
             let stats = { bestScore: 0, totalGames: 0, totalMoves: 0, maxTile: 0 };
+            let isVK = false;
             
-            // --- VK Bridge Integration ---
-            const APP_ID = 53965380; // ВАЖНО: Укажите ваш ID приложения VK
-            const STATS_VK_KEY = '2048GameStats';
-            let vkUserId = null;
+            // --- Интеграция VK Bridge ---
+            const APP_ID = 0; // ВАЖНО: Укажите ваш ID приложения VK
+            const STATS_VK_KEY = '2048GameStats_v2';
 
             async function initVK() {
                 try {
                     await vkBridge.send('VKWebAppInit');
+                    isVK = true;
                     const userInfo = await vkBridge.send('VKWebAppGetUserInfo');
                     vkUserId = userInfo.id;
                     await loadStats();
-                    vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' });
+                    vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' }).catch(e => console.error(e));
                     console.log('VK Bridge initialized');
                 } catch (error) {
                     console.error('VK Bridge init failed:', error);
-                    await loadStats(); // Fallback to local stats
+                    isVK = false;
+                    await loadStats(); // Загрузка локальной статистики
                 }
             }
 
@@ -265,8 +275,8 @@
                 stats.bestScore = Math.max(stats.bestScore, score);
                 stats.maxTile = Math.max(stats.maxTile, ...grid.flat().map(t => t ? t.value : 0));
                 const dataString = JSON.stringify(stats);
-                localStorage.setItem(STATS_VK_KEY, dataString); // Always save locally
-                if (vkUserId) {
+                localStorage.setItem(STATS_VK_KEY, dataString);
+                if (isVK && vkUserId) {
                     try {
                         await vkBridge.send('VKWebAppStorageSet', { key: STATS_VK_KEY, value: dataString });
                     } catch (e) { console.error('VK Storage save failed:', e); }
@@ -275,12 +285,11 @@
             }
 
             async function loadStats() {
-                if (vkUserId) {
+                if (isVK && vkUserId) {
                     try {
                         const data = await vkBridge.send('VKWebAppStorageGet', { keys: [STATS_VK_KEY] });
                         if (data.keys[0].value) {
                             stats = JSON.parse(data.keys[0].value);
-                            console.log('Stats loaded from VK Storage');
                             updateBestScoreDisplay();
                             return;
                         }
@@ -290,7 +299,8 @@
                 if (localData) stats = JSON.parse(localData);
                 updateBestScoreDisplay();
             }
-
+            
+            // --- Основная инициализация ---
             function init() {
                 initVK();
                 setupTheme();
@@ -317,18 +327,25 @@
             function showScreen(screen) {
                 document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
                 screen.classList.remove('hidden');
-                vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' });
+                if (isVK) vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' }).catch(e => console.error(e));
             }
 
             function showOverlay(overlay) { overlay.classList.remove('hidden'); }
             function hideOverlay(overlay) { overlay.classList.add('hidden'); }
 
+            // --- Игровая логика ---
             function startGame() {
-                isGameOver = false; isPaused = false; isHammerModeActive = false;
-                score = 0; stats.totalGames++;
+                isGameOver = false; isPaused = false;
+                document.body.classList.remove('hammer-mode');
+                isHammerModeActive = false;
+                score = 0; 
+                stats.totalGames++;
                 tileContainer.innerHTML = '';
                 grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null));
-                addRandomTile(); addRandomTile();
+                
+                addRandomTile();
+                addRandomTile();
+                
                 updateScoreDisplay();
                 showScreen(document.getElementById('game-screen'));
             }
@@ -348,112 +365,128 @@
                 if (emptyCells.length > 0) {
                     const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
                     const value = Math.random() < 0.9 ? 2 : 4;
-                    grid[r][c] = { value, id: Date.now() + Math.random(), element: createTileElement(r, c, value, true) };
+                    const tile = { value, row: r, col: c, id: Date.now() + Math.random() };
+                    grid[r][c] = tile;
+                    renderNewTile(tile);
                 }
             }
-
-            function createTileElement(row, col, value, isNew = false) {
+            
+            function renderNewTile(tile) {
                 const tileEl = document.createElement('div');
-                tileEl.classList.add('tile');
-                if (isNew) tileEl.classList.add('new');
-                tileEl.dataset.value = value;
-                tileEl.textContent = value;
-                tileEl.style.setProperty('--row', row);
-                tileEl.style.setProperty('--col', col);
+                tileEl.classList.add('tile', 'new');
+                tileEl.dataset.value = tile.value;
+                tileEl.dataset.id = tile.id;
+                tileEl.textContent = tile.value;
+                tileEl.style.setProperty('--row', tile.row);
+                tileEl.style.setProperty('--col', tile.col);
                 tileContainer.appendChild(tileEl);
-                tileEl.addEventListener('click', () => onTileClick(row, col));
-                return tileEl;
             }
 
             function handleMove(direction) {
                 if (isGameOver || isPaused || isHammerModeActive) return;
-                const { newGrid, moved, scoreIncrease } = moveTiles(direction);
-                if (moved) {
-                    stats.totalMoves++; score += scoreIncrease;
-                    const promises = [];
-                    for (let r = 0; r < GRID_SIZE; r++) {
-                        for (let c = 0; c < GRID_SIZE; c++) {
-                            const oldTile = grid[r][c];
-                            const newTileData = newGrid.find(t => t.id === (oldTile === null || oldTile === void 0 ? void 0 : oldTile.id));
-                            if (newTileData) promises.push(moveTile(oldTile, newTileData.row, newTileData.col));
+
+                const moveVector = { up: { r: -1, c: 0 }, down: { r: 1, c: 0 }, left: { r: 0, c: -1 }, right: { r: 0, c: 1 } }[direction];
+                const traversal = buildTraversal(moveVector);
+                let moved = false;
+                let scoreIncrease = 0;
+
+                const tilePositions = {};
+                grid.flat().filter(Boolean).forEach(t => tilePositions[t.id] = t);
+
+                traversal.r.forEach(row => {
+                    traversal.c.forEach(col => {
+                        const currentTile = grid[row][col];
+                        if (currentTile) {
+                            const positions = findFarthestPosition(row, col, moveVector);
+                            const nextPos = positions.next;
+                            const nextTile = grid[nextPos.r] && grid[nextPos.r][nextPos.c];
+
+                            if (nextTile && nextTile.value === currentTile.value && !nextTile.mergedFrom) {
+                                const merged = {
+                                    value: currentTile.value * 2,
+                                    row: nextPos.r,
+                                    col: nextPos.c,
+                                    id: nextTile.id,
+                                    mergedFrom: [currentTile, nextTile]
+                                };
+                                grid[nextPos.r][nextPos.c] = merged;
+                                grid[row][col] = null;
+                                scoreIncrease += merged.value;
+                                moved = true;
+                            } else {
+                                const farthest = positions.farthest;
+                                if (farthest.r !== row || farthest.c !== col) {
+                                    grid[farthest.r][farthest.c] = currentTile;
+                                    grid[row][col] = null;
+                                    moved = true;
+                                }
+                            }
                         }
-                    }
-                    Promise.all(promises).then(() => {
-                        updateGrid(newGrid);
-                        updateScoreDisplay();
+                    });
+                });
+
+                if (moved) {
+                    stats.totalMoves++;
+                    score += scoreIncrease;
+                    renderBoard();
+                    setTimeout(() => {
                         addRandomTile();
                         checkGameOver();
-                    });
+                    }, 150);
                 }
             }
-            
-            function moveTiles(direction) {
-                let moved = false; let scoreIncrease = 0;
-                const tempGrid = grid.flat().filter(Boolean).map(t => ({ ...t }));
-                const isVertical = direction === 'up' || direction === 'down';
-                const isForward = direction === 'right' || direction === 'down';
 
-                for (let i = 0; i < GRID_SIZE; i++) {
-                    const line = tempGrid.filter(t => (isVertical ? t.col : t.row) === i)
-                                       .sort((a, b) => isVertical ? a.row - b.row : a.col - b.col);
-                    if (isForward) line.reverse();
+            function renderBoard() {
+                const newTiles = [];
+                grid.flat().forEach(tile => {
+                    if (tile) {
+                        if (tile.mergedFrom) {
+                            const [t1, t2] = tile.mergedFrom;
+                            const t1El = document.querySelector(`[data-id="${t1.id}"]`);
+                            const t2El = document.querySelector(`[data-id="${t2.id}"]`);
+                            
+                            t1El.style.setProperty('--row', tile.row);
+                            t1El.style.setProperty('--col', tile.col);
+                            t2El.style.setProperty('--row', tile.row);
+                            t2El.style.setProperty('--col', tile.col);
+                            
+                            setTimeout(() => {
+                                t1El.remove();
+                                t2El.remove();
+                                const mergedEl = createTileElement(tile.row, tile.col, tile.value);
+                                mergedEl.classList.add('merged');
+                                tile.element = mergedEl;
+                            }, 100);
 
-                    for (let k = 0; k < line.length - 1; k++) {
-                        if (line[k].value === line[k + 1].value) {
-                            const mergedValue = line[k].value * 2;
-                            scoreIncrease += mergedValue;
-                            line[k].value = mergedValue;
-                            line[k+1].mergedInto = line[k].id;
-                            line.splice(k + 1, 1);
+                        } else {
+                            const tileEl = document.querySelector(`[data-id="${tile.id}"]`);
+                            tileEl.style.setProperty('--row', tile.row);
+                            tileEl.style.setProperty('--col', tile.col);
                         }
                     }
-                    
-                    line.forEach((tile, index) => {
-                        const newPos = isForward ? GRID_SIZE - 1 - index : index;
-                        if (isVertical) tile.row = newPos; else tile.col = newPos;
-                    });
+                });
+                updateScoreDisplay();
+            }
+            
+            function buildTraversal(vector) {
+                const traversal = { r: [], c: [] };
+                for (let i = 0; i < GRID_SIZE; i++) {
+                    traversal.r.push(i);
+                    traversal.c.push(i);
                 }
-                
-                const flatInitial = grid.flat().filter(Boolean).map(t => `${t.id}-${t.row}-${t.col}`).join();
-                const flatFinal = tempGrid.map(t => `${t.id}-${t.row}-${t.col}`).join();
-                moved = flatInitial !== flatFinal;
-
-                return { newGrid: tempGrid, moved, scoreIncrease };
+                if (vector.r === 1) traversal.r.reverse();
+                if (vector.c === 1) traversal.c.reverse();
+                return traversal;
             }
 
-            function moveTile(tile, row, col) {
-                return new Promise(resolve => {
-                    tile.element.style.setProperty('--row', row);
-                    tile.element.style.setProperty('--col', col);
-                    tile.element.addEventListener('transitionend', resolve, { once: true });
-                });
-            }
-
-            function updateGrid(newGridData) {
-                const newGrid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null));
-                const mergedTiles = [];
-
-                newGridData.forEach(tileData => {
-                    if (tileData.mergedInto) {
-                        const masterTile = newGridData.find(t => t.id === tileData.mergedInto);
-                        if(masterTile) mergedTiles.push({ ...masterTile, element: grid[masterTile.row][masterTile.col].element});
-                        grid[tileData.row][tileData.col].element.remove();
-                    }
-                });
-
-                newGridData.filter(t => !t.mergedInto).forEach(tileData => {
-                    const tile = grid[tileData.row][tileData.col];
-                    tile.value = tileData.value;
-                    newGrid[tileData.row][tileData.col] = tile;
-                });
-                
-                grid = newGrid;
-                
-                mergedTiles.forEach(tile => {
-                    tile.element.dataset.value = tile.value;
-                    tile.element.textContent = tile.value;
-                    tile.element.classList.add('merged');
-                });
+            function findFarthestPosition(row, col, vector) {
+                let previous;
+                do {
+                    previous = { r: row, c: col };
+                    row += vector.r;
+                    col += vector.c;
+                } while (row >= 0 && row < GRID_SIZE && col >= 0 && col < GRID_SIZE && !grid[row][col]);
+                return { farthest: previous, next: { r: row, c: col } };
             }
 
             function checkGameOver() {
@@ -471,7 +504,7 @@
                 document.getElementById('game-over-text').textContent = `Ваш счет: ${score}.`;
                 setTimeout(() => {
                     showOverlay(document.getElementById('game-over-overlay'));
-                    vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' }).catch(e=>console.log(e));
+                    if(isVK) vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' }).catch(e=>console.error(e));
                 }, 500);
             }
             
@@ -479,19 +512,27 @@
             function resumeGame() { isPaused = false; hideOverlay(document.getElementById('pause-overlay')); }
 
             function activateHammer() {
-                vkBridge.send('VKWebAppShowRewardAd', { ad_format: 'reward' })
-                    .then(data => { if (data.result) {
-                        isHammerModeActive = true;
-                        document.body.classList.add('hammer-mode');
-                    }})
-                    .catch(error => console.log(error));
+                if(isPaused || isGameOver) return;
+                if (isVK) {
+                    vkBridge.send('VKWebAppShowRewardAd', { ad_format: 'reward' })
+                        .then(data => { if (data.result) {
+                            isHammerModeActive = true;
+                            document.body.classList.add('hammer-mode');
+                        }})
+                        .catch(error => console.error("Reward Ad Error:", error));
+                } else {
+                    // Fallback for testing outside VK
+                    console.log("Reward Ad mocked for testing.");
+                    isHammerModeActive = true;
+                    document.body.classList.add('hammer-mode');
+                }
             }
             
             function onTileClick(row, col) {
                 if (!isHammerModeActive) return;
                 const tile = grid[row][col];
                 if (tile) {
-                    tile.element.remove();
+                    document.querySelector(`[data-id="${tile.id}"]`).remove();
                     grid[row][col] = null;
                     isHammerModeActive = false;
                     document.body.classList.remove('hammer-mode');
