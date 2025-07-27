@@ -146,20 +146,43 @@
         .light-theme .grid-cell { background-color: var(--light-cell-bg); }
         .dark-theme .grid-cell { background-color: var(--dark-cell-bg); }
         
-        #tile-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #tile-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
         
         body.hammer-mode #tile-container { pointer-events: auto; }
-        body:not(.hammer-mode) #tile-container { pointer-events: none; }
-
         body.hammer-mode .tile { cursor: pointer; box-shadow: 0 0 15px #ff4757; transform: scale(1.05); }
 
-        .tile { --size: calc((100% - 5 * var(--gap)) / 4); position: absolute; width: var(--size); height: var(--size); top: calc(var(--row) * (var(--size) + var(--gap)) + var(--gap)); left: calc(var(--col) * (var(--size) + var(--gap)) + var(--gap)); border-radius: var(--border-radius); font-weight: 700; display: flex; justify-content: center; align-items: center; font-size: 2.5rem; transition: top var(--anim-speed) ease-in-out, left var(--anim-speed) ease-in-out, transform 0.2s; z-index: 10; }
+        .tile {
+            --size: calc((100% - 5 * var(--gap)) / 4);
+            position: absolute;
+            width: var(--size);
+            height: var(--size);
+            top: calc(var(--row) * (var(--size) + var(--gap)) + var(--gap));
+            left: calc(var(--col) * (var(--size) + var(--gap)) + var(--gap));
+            border-radius: var(--border-radius);
+            font-weight: 700;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2.5rem;
+            transition: top var(--anim-speed) ease-in-out, left var(--anim-speed) ease-in-out, transform 0.2s;
+            z-index: 10;
+        }
         .tile[data-value="2"] { background-color: var(--c-2); color: var(--t-2); } .tile[data-value="4"] { background-color: var(--c-4); color: var(--t-4); } .tile[data-value="8"] { background-color: var(--c-8); color: var(--t-8); } .tile[data-value="16"] { background-color: var(--c-16); color: var(--t-16); } .tile[data-value="32"] { background-color: var(--c-32); color: var(--t-32); } .tile[data-value="64"] { background-color: var(--c-64); color: var(--t-64); } .tile[data-value="128"] { background-color: var(--c-128); color: var(--t-128); } .tile[data-value="256"] { background-color: var(--c-256); color: var(--t-256); } .tile[data-value="512"] { background-color: var(--c-512); color: var(--t-512); } .tile[data-value="1024"] { background-color: var(--c-1024); color: var(--t-1024); font-size: 2rem; } .tile[data-value="2048"] { background-color: var(--c-2048); color: var(--t-2048); font-size: 2rem; } .tile[data-value="4096"] { background-color: var(--c-super); color: var(--t-super); font-size: 2rem; } .tile[data-value="8192"] { background-color: var(--c-super); color: var(--t-super); font-size: 1.8rem; }
         
         .tile.new { animation: appear 0.2s ease-in-out; }
         .tile.merged { animation: pop 0.2s ease-in-out 0.08s; z-index: 20; }
+        /* НОВАЯ АНИМАЦИЯ для исчезающей плитки */
+        .tile.merging-out {
+            animation: merge-out 0.2s ease-in-out forwards;
+            z-index: 0;
+        }
         @keyframes appear { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+        /* НОВЫЙ KEYFRAME для исчезающей плитки */
+        @keyframes merge-out {
+          from { transform: scale(1); opacity: 1; }
+          to { transform: scale(0); opacity: 0; }
+        }
         
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; transition: opacity 0.3s, backdrop-filter 0.3s; z-index: 100; }
         .light-theme .overlay { background-color: rgba(250, 248, 239, 0.9); }
@@ -250,6 +273,7 @@
             let touchStartX = 0, touchStartY = 0, touchEndX = 0, touchEndY = 0;
             let stats = { bestScore: 0, totalGames: 0, totalMoves: 0, maxTile: 0 };
             let isVK = false;
+            let vkUserId = null;
             
             // --- Интеграция VK Bridge ---
             const APP_ID = 53965380; // ВАЖНО: Укажите ваш ID приложения VK
@@ -262,7 +286,8 @@
                     const userInfo = await vkBridge.send('VKWebAppGetUserInfo');
                     vkUserId = userInfo.id;
                     await loadStats();
-                    vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' }).catch(e => console.error(e));
+                    // Показываем баннер сразу после инициализации
+                    vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' }).catch(e => console.error("Banner Ad Init Error:", e));
                     console.log('VK Bridge initialized');
                 } catch (error) {
                     console.error('VK Bridge init failed:', error);
@@ -273,7 +298,8 @@
 
             async function saveStats() {
                 stats.bestScore = Math.max(stats.bestScore, score);
-                stats.maxTile = Math.max(stats.maxTile, ...grid.flat().map(t => t ? t.value : 0));
+                const maxTileValue = Math.max(0, ...grid.flat().filter(Boolean).map(t => t.value));
+                stats.maxTile = Math.max(stats.maxTile, maxTileValue);
                 const dataString = JSON.stringify(stats);
                 localStorage.setItem(STATS_VK_KEY, dataString);
                 if (isVK && vkUserId) {
@@ -285,18 +311,19 @@
             }
 
             async function loadStats() {
+                let loadedData = null;
                 if (isVK && vkUserId) {
                     try {
                         const data = await vkBridge.send('VKWebAppStorageGet', { keys: [STATS_VK_KEY] });
                         if (data.keys[0].value) {
-                            stats = JSON.parse(data.keys[0].value);
-                            updateBestScoreDisplay();
-                            return;
+                            loadedData = data.keys[0].value;
                         }
                     } catch (e) { console.error('VK Storage load failed:', e); }
                 }
-                const localData = localStorage.getItem(STATS_VK_KEY);
-                if (localData) stats = JSON.parse(localData);
+                if (!loadedData) {
+                    loadedData = localStorage.getItem(STATS_VK_KEY);
+                }
+                if (loadedData) stats = JSON.parse(loadedData);
                 updateBestScoreDisplay();
             }
             
@@ -327,7 +354,11 @@
             function showScreen(screen) {
                 document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
                 screen.classList.remove('hidden');
-                if (isVK) vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' }).catch(e => console.error(e));
+                // ИЗМЕНЕНО: Пытаемся показать баннер при каждой смене экрана, чтобы он был всегда
+                if (isVK) {
+                    vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' })
+                           .catch(e => console.error("Banner Ad Error:", e));
+                }
             }
 
             function showOverlay(overlay) { overlay.classList.remove('hidden'); }
@@ -335,24 +366,56 @@
 
             // --- Игровая логика ---
             function startGame() {
-                isGameOver = false; isPaused = false;
+                isGameOver = false;
+                isPaused = false;
                 document.body.classList.remove('hammer-mode');
                 isHammerModeActive = false;
-                score = 0; 
+                score = 0;
                 stats.totalGames++;
-                tileContainer.innerHTML = '';
                 grid = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(null));
-                
+                tileContainer.innerHTML = '';
+
                 addRandomTile();
                 addRandomTile();
-                
+
                 updateScoreDisplay();
                 showScreen(document.getElementById('game-screen'));
             }
 
             function updateScoreDisplay() {
                 currentScoreEl.textContent = score;
+                if (score > stats.bestScore) {
+                    stats.bestScore = score;
+                    updateBestScoreDisplay();
+                }
                 saveStats();
+            }
+            
+            function createTileElement(tile, isNew) {
+                const tileEl = document.createElement('div');
+                tileEl.classList.add('tile');
+                if (isNew) {
+                    tileEl.classList.add('new');
+                }
+                tileEl.dataset.id = tile.id;
+                updateTileElement(tileEl, tile);
+                tileContainer.appendChild(tileEl);
+            }
+            
+            function updateTileElement(tileEl, tile) {
+                tileEl.dataset.value = tile.value;
+                tileEl.textContent = tile.value;
+                tileEl.style.setProperty('--row', tile.row);
+                tileEl.style.setProperty('--col', tile.col);
+                
+                if (tile.value >= 1024) {
+                    tileEl.style.fontSize = '2rem';
+                } else if (tile.value >= 10000) {
+                    tileEl.style.fontSize = '1.8rem';
+                }
+                else {
+                    tileEl.style.fontSize = '2.5rem';
+                }
             }
 
             function addRandomTile() {
@@ -365,23 +428,12 @@
                 if (emptyCells.length > 0) {
                     const { r, c } = emptyCells[Math.floor(Math.random() * emptyCells.length)];
                     const value = Math.random() < 0.9 ? 2 : 4;
-                    const tile = { value, row: r, col: c, id: Date.now() + Math.random() };
-                    grid[r][c] = tile;
-                    renderNewTile(tile);
+                    const newTile = { value, row: r, col: c, id: Date.now() + Math.random() };
+                    grid[r][c] = newTile;
+                    createTileElement(newTile, true);
                 }
             }
             
-            function renderNewTile(tile) {
-                const tileEl = document.createElement('div');
-                tileEl.classList.add('tile', 'new');
-                tileEl.dataset.value = tile.value;
-                tileEl.dataset.id = tile.id;
-                tileEl.textContent = tile.value;
-                tileEl.style.setProperty('--row', tile.row);
-                tileEl.style.setProperty('--col', tile.col);
-                tileContainer.appendChild(tileEl);
-            }
-
             function handleMove(direction) {
                 if (isGameOver || isPaused || isHammerModeActive) return;
 
@@ -390,34 +442,52 @@
                 let moved = false;
                 let scoreIncrease = 0;
 
-                const tilePositions = {};
-                grid.flat().filter(Boolean).forEach(t => tilePositions[t.id] = t);
+                grid.flat().filter(Boolean).forEach(tile => delete tile.merged);
 
                 traversal.r.forEach(row => {
                     traversal.c.forEach(col => {
-                        const currentTile = grid[row][col];
-                        if (currentTile) {
-                            const positions = findFarthestPosition(row, col, moveVector);
-                            const nextPos = positions.next;
-                            const nextTile = grid[nextPos.r] && grid[nextPos.r][nextPos.c];
+                        const currentCell = { r: row, c: col };
+                        const currentTile = grid[currentCell.r][currentCell.c];
 
-                            if (nextTile && nextTile.value === currentTile.value && !nextTile.mergedFrom) {
-                                const merged = {
+                        if (currentTile) {
+                            const positions = findFarthestPosition(currentCell, moveVector);
+                            const farthest = positions.farthest;
+                            const next = positions.next;
+                            const nextTile = (next.r >= 0 && next.r < GRID_SIZE && next.c >= 0 && next.c < GRID_SIZE) ? grid[next.r][next.c] : null;
+
+                            // Условие для СЛИЯНИЯ
+                            if (nextTile && nextTile.value === currentTile.value && !nextTile.merged) {
+                                const mergedTile = {
                                     value: currentTile.value * 2,
-                                    row: nextPos.r,
-                                    col: nextPos.c,
+                                    row: next.r,
+                                    col: next.c,
                                     id: nextTile.id,
-                                    mergedFrom: [currentTile, nextTile]
+                                    merged: true
                                 };
-                                grid[nextPos.r][nextPos.c] = merged;
-                                grid[row][col] = null;
-                                scoreIncrease += merged.value;
+                                grid[next.r][next.c] = mergedTile;
+                                grid[currentCell.r][currentCell.c] = null;
+
+                                const currentTileEl = document.querySelector(`[data-id="${currentTile.id}"]`);
+                                const nextTileEl = document.querySelector(`[data-id="${nextTile.id}"]`);
+                                
+                                // ИЗМЕНЕНО: Улучшенная анимация слияния
+                                // Перемещаем обе плитки в одну точку
+                                updateTileElement(currentTileEl, mergedTile);
+                                
+                                // Добавляем класс для элегантного исчезновения
+                                currentTileEl.classList.add('merging-out');
+                                nextTileEl.classList.add('merged');
+
+                                scoreIncrease += mergedTile.value;
                                 moved = true;
-                            } else {
-                                const farthest = positions.farthest;
-                                if (farthest.r !== row || farthest.c !== col) {
-                                    grid[farthest.r][farthest.c] = currentTile;
-                                    grid[row][col] = null;
+                            } else { // Условие для ПЕРЕМЕЩЕНИЯ
+                                if (farthest.r !== currentCell.r || farthest.c !== currentCell.c) {
+                                    const movedTileData = { ...currentTile, row: farthest.r, col: farthest.c };
+                                    grid[farthest.r][farthest.c] = movedTileData;
+                                    grid[currentCell.r][currentCell.c] = null;
+                                    
+                                    const tileEl = document.querySelector(`[data-id="${currentTile.id}"]`);
+                                    updateTileElement(tileEl, movedTileData);
                                     moved = true;
                                 }
                             }
@@ -428,44 +498,25 @@
                 if (moved) {
                     stats.totalMoves++;
                     score += scoreIncrease;
-                    renderBoard();
+                    
                     setTimeout(() => {
+                        updateScoreDisplay();
+                        
+                        // ИЗМЕНЕНО: Удаляем плитки, которые слились и исчезли
+                        document.querySelectorAll('.tile.merging-out').forEach(el => el.remove());
+                        
+                        grid.flat().filter(t => t && t.merged).forEach(tile => {
+                            const tileEl = document.querySelector(`[data-id="${tile.id}"]`);
+                            if (tileEl) {
+                                tileEl.classList.remove('merged');
+                                updateTileElement(tileEl, tile);
+                            }
+                        });
+
                         addRandomTile();
                         checkGameOver();
-                    }, 150);
+                    }, 200); // Немного увеличена задержка для плавной анимации
                 }
-            }
-
-            function renderBoard() {
-                const newTiles = [];
-                grid.flat().forEach(tile => {
-                    if (tile) {
-                        if (tile.mergedFrom) {
-                            const [t1, t2] = tile.mergedFrom;
-                            const t1El = document.querySelector(`[data-id="${t1.id}"]`);
-                            const t2El = document.querySelector(`[data-id="${t2.id}"]`);
-                            
-                            t1El.style.setProperty('--row', tile.row);
-                            t1El.style.setProperty('--col', tile.col);
-                            t2El.style.setProperty('--row', tile.row);
-                            t2El.style.setProperty('--col', tile.col);
-                            
-                            setTimeout(() => {
-                                t1El.remove();
-                                t2El.remove();
-                                const mergedEl = createTileElement(tile.row, tile.col, tile.value);
-                                mergedEl.classList.add('merged');
-                                tile.element = mergedEl;
-                            }, 100);
-
-                        } else {
-                            const tileEl = document.querySelector(`[data-id="${tile.id}"]`);
-                            tileEl.style.setProperty('--row', tile.row);
-                            tileEl.style.setProperty('--col', tile.col);
-                        }
-                    }
-                });
-                updateScoreDisplay();
             }
             
             function buildTraversal(vector) {
@@ -479,14 +530,15 @@
                 return traversal;
             }
 
-            function findFarthestPosition(row, col, vector) {
+            function findFarthestPosition(cell, vector) {
                 let previous;
+                let current = { r: cell.r, c: cell.c };
                 do {
-                    previous = { r: row, c: col };
-                    row += vector.r;
-                    col += vector.c;
-                } while (row >= 0 && row < GRID_SIZE && col >= 0 && col < GRID_SIZE && !grid[row][col]);
-                return { farthest: previous, next: { r: row, c: col } };
+                    previous = { r: current.r, c: current.c };
+                    current.r += vector.r;
+                    current.c += vector.c;
+                } while (current.r >= 0 && current.r < GRID_SIZE && current.c >= 0 && current.c < GRID_SIZE && !grid[current.r][current.c]);
+                return { farthest: previous, next: current };
             }
 
             function checkGameOver() {
@@ -499,12 +551,13 @@
                     }
                 }
                 isGameOver = true;
-                const maxTile = Math.max(...grid.flat().filter(Boolean).map(t => t.value));
-                document.getElementById('game-over-title').textContent = maxTile >= 2048 ? 'Победа!' : 'Игра окончена!';
+                saveStats();
+                document.getElementById('game-over-title').textContent = stats.maxTile >= 2048 ? 'Победа!' : 'Игра окончена!';
                 document.getElementById('game-over-text').textContent = `Ваш счет: ${score}.`;
                 setTimeout(() => {
                     showOverlay(document.getElementById('game-over-overlay'));
-                    if(isVK) vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' }).catch(e=>console.error(e));
+                    // ИЗМЕНЕНО: Используем правильный метод для межстраничной рекламы
+                    if(isVK) vkBridge.send('VKWebAppShowInterstitial').catch(e=>console.error("Interstitial Ad Error:", e));
                 }, 500);
             }
             
@@ -513,29 +566,33 @@
 
             function activateHammer() {
                 if(isPaused || isGameOver) return;
-                if (isVK) {
-                    vkBridge.send('VKWebAppShowRewardAd', { ad_format: 'reward' })
-                        .then(data => { if (data.result) {
-                            isHammerModeActive = true;
-                            document.body.classList.add('hammer-mode');
-                        }})
-                        .catch(error => console.error("Reward Ad Error:", error));
-                } else {
-                    // Fallback for testing outside VK
-                    console.log("Reward Ad mocked for testing.");
+                const useHammer = () => {
                     isHammerModeActive = true;
                     document.body.classList.add('hammer-mode');
+                };
+                if (isVK) {
+                    // Логика для ревардед рекламы уже была правильной
+                    vkBridge.send('VKWebAppShowRewardAd')
+                        .then(data => { if (data.result) useHammer(); })
+                        .catch(error => console.error("Reward Ad Error:", error));
+                } else {
+                    console.log("Reward Ad mocked for testing.");
+                    useHammer();
                 }
             }
             
-            function onTileClick(row, col) {
+            function onTileClick(e) {
                 if (!isHammerModeActive) return;
-                const tile = grid[row][col];
-                if (tile) {
-                    document.querySelector(`[data-id="${tile.id}"]`).remove();
-                    grid[row][col] = null;
-                    isHammerModeActive = false;
-                    document.body.classList.remove('hammer-mode');
+                const clickedTileEl = e.target.closest('.tile');
+                if (clickedTileEl) {
+                    const row = parseInt(clickedTileEl.style.getPropertyValue('--row'));
+                    const col = parseInt(clickedTileEl.style.getPropertyValue('--col'));
+                    if (!isNaN(row) && !isNaN(col) && grid[row][col]) {
+                        grid[row][col] = null;
+                        clickedTileEl.remove();
+                        isHammerModeActive = false;
+                        document.body.classList.remove('hammer-mode');
+                    }
                 }
             }
 
@@ -571,21 +628,22 @@
                     }
                 });
                 gameContainer.addEventListener('touchstart', (e) => {
-                    if (isPaused || isGameOver) return;
+                    if (isPaused || isGameOver || isHammerModeActive) return;
                     touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
                 }, { passive: true });
                 gameContainer.addEventListener('touchmove', (e) => {
-                    if (!touchStartX || !touchStartY) return;
+                    if (!touchStartX || !touchStartY || isHammerModeActive) return;
                     touchEndX = e.touches[0].clientX; touchEndY = e.touches[0].clientY;
                 }, { passive: true });
                 gameContainer.addEventListener('touchend', () => {
-                    if (isPaused || isGameOver) return;
+                    if (isPaused || isGameOver || isHammerModeActive) return;
                     const dx = touchEndX - touchStartX; const dy = touchEndY - touchStartY;
                     if (Math.max(Math.abs(dx), Math.abs(dy)) > 30) {
                         handleMove(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
                     }
                     touchStartX = touchStartY = touchEndX = touchEndY = 0;
                 });
+                tileContainer.addEventListener('click', onTileClick);
                 document.addEventListener('contextmenu', e => e.preventDefault());
             }
 
