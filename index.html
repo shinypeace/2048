@@ -171,14 +171,12 @@
         
         .tile.new { animation: appear 0.2s ease-in-out; }
         .tile.merged { animation: pop 0.2s ease-in-out 0.08s; z-index: 20; }
-        /* НОВАЯ АНИМАЦИЯ для исчезающей плитки */
         .tile.merging-out {
             animation: merge-out 0.2s ease-in-out forwards;
             z-index: 0;
         }
         @keyframes appear { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
-        /* НОВЫЙ KEYFRAME для исчезающей плитки */
         @keyframes merge-out {
           from { transform: scale(1); opacity: 1; }
           to { transform: scale(0); opacity: 0; }
@@ -203,6 +201,27 @@
         .dark-theme .stats-item { background-color: var(--dark-cell-bg); }
         .stats-item span:first-child { display: block; font-size: 0.9rem; opacity: 0.8; }
         .stats-item span:last-child { display: block; font-size: 1.8rem; font-weight: 700; }
+
+        .toast-notification {
+            position: fixed;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 600;
+            z-index: 2000;
+            opacity: 0;
+            transition: opacity 0.4s ease, transform 0.4s ease;
+            pointer-events: none;
+        }
+        .toast-notification.show {
+            opacity: 1;
+            transform: translate(-50%, -20px);
+        }
 
         @media (max-width: 420px) { :root { --gap: 8px; } .container { padding: 10px; } #game-screen { padding-top: 10px; } .game-title { font-size: 3rem; } .score-box { padding: 5px 10px; min-width: 70px;} .score-box span:last-child { font-size: 1.2rem; } .tile { font-size: 1.8rem; } .tile[data-value="1024"], .tile[data-value="2048"], .tile[data-value="4096"] { font-size: 1.5rem; } .tile[data-value="8192"] { font-size: 1.3rem; } .overlay-content h2 { font-size: 2rem; } }
     </style>
@@ -276,23 +295,22 @@
             let vkUserId = null;
             
             // --- Интеграция VK Bridge ---
-            const APP_ID = 53965380; // ВАЖНО: Укажите ваш ID приложения VK
             const STATS_VK_KEY = '2048GameStats_v2';
 
             async function initVK() {
                 try {
                     await vkBridge.send('VKWebAppInit');
                     isVK = true;
+                    await vkBridge.send('VKWebAppCheckNativeAds', { ad_format: 'reward' });
                     const userInfo = await vkBridge.send('VKWebAppGetUserInfo');
                     vkUserId = userInfo.id;
                     await loadStats();
-                    // Показываем баннер сразу после инициализации
                     vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' }).catch(e => console.error("Banner Ad Init Error:", e));
                     console.log('VK Bridge initialized');
                 } catch (error) {
                     console.error('VK Bridge init failed:', error);
                     isVK = false;
-                    await loadStats(); // Загрузка локальной статистики
+                    await loadStats();
                 }
             }
 
@@ -354,7 +372,6 @@
             function showScreen(screen) {
                 document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
                 screen.classList.remove('hidden');
-                // ИЗМЕНЕНО: Пытаемся показать баннер при каждой смене экрана, чтобы он был всегда
                 if (isVK) {
                     vkBridge.send("VKWebAppShowBannerAd", { banner_location: 'bottom' })
                            .catch(e => console.error("Banner Ad Error:", e));
@@ -366,8 +383,7 @@
 
             // --- Игровая логика ---
             function startGame() {
-                isGameOver = false;
-                isPaused = false;
+                isGameOver = false; isPaused = false;
                 document.body.classList.remove('hammer-mode');
                 isHammerModeActive = false;
                 score = 0;
@@ -408,12 +424,11 @@
                 tileEl.style.setProperty('--row', tile.row);
                 tileEl.style.setProperty('--col', tile.col);
                 
-                if (tile.value >= 1024) {
+                if (tile.value >= 8192) {
+                     tileEl.style.fontSize = '1.8rem';
+                } else if (tile.value >= 1024) {
                     tileEl.style.fontSize = '2rem';
-                } else if (tile.value >= 10000) {
-                    tileEl.style.fontSize = '1.8rem';
-                }
-                else {
+                } else {
                     tileEl.style.fontSize = '2.5rem';
                 }
             }
@@ -434,6 +449,7 @@
                 }
             }
             
+            // ВОССТАНОВЛЕНА ПРЕДЫДУЩАЯ РАБОЧАЯ ЛОГИКА ДВИЖЕНИЯ
             function handleMove(direction) {
                 if (isGameOver || isPaused || isHammerModeActive) return;
 
@@ -455,7 +471,6 @@
                             const next = positions.next;
                             const nextTile = (next.r >= 0 && next.r < GRID_SIZE && next.c >= 0 && next.c < GRID_SIZE) ? grid[next.r][next.c] : null;
 
-                            // Условие для СЛИЯНИЯ
                             if (nextTile && nextTile.value === currentTile.value && !nextTile.merged) {
                                 const mergedTile = {
                                     value: currentTile.value * 2,
@@ -470,17 +485,14 @@
                                 const currentTileEl = document.querySelector(`[data-id="${currentTile.id}"]`);
                                 const nextTileEl = document.querySelector(`[data-id="${nextTile.id}"]`);
                                 
-                                // ИЗМЕНЕНО: Улучшенная анимация слияния
-                                // Перемещаем обе плитки в одну точку
                                 updateTileElement(currentTileEl, mergedTile);
                                 
-                                // Добавляем класс для элегантного исчезновения
                                 currentTileEl.classList.add('merging-out');
                                 nextTileEl.classList.add('merged');
 
                                 scoreIncrease += mergedTile.value;
                                 moved = true;
-                            } else { // Условие для ПЕРЕМЕЩЕНИЯ
+                            } else {
                                 if (farthest.r !== currentCell.r || farthest.c !== currentCell.c) {
                                     const movedTileData = { ...currentTile, row: farthest.r, col: farthest.c };
                                     grid[farthest.r][farthest.c] = movedTileData;
@@ -502,7 +514,6 @@
                     setTimeout(() => {
                         updateScoreDisplay();
                         
-                        // ИЗМЕНЕНО: Удаляем плитки, которые слились и исчезли
                         document.querySelectorAll('.tile.merging-out').forEach(el => el.remove());
                         
                         grid.flat().filter(t => t && t.merged).forEach(tile => {
@@ -515,7 +526,7 @@
 
                         addRandomTile();
                         checkGameOver();
-                    }, 200); // Немного увеличена задержка для плавной анимации
+                    }, 200);
                 }
             }
             
@@ -556,28 +567,49 @@
                 document.getElementById('game-over-text').textContent = `Ваш счет: ${score}.`;
                 setTimeout(() => {
                     showOverlay(document.getElementById('game-over-overlay'));
-                    // ИЗМЕНЕНО: Используем правильный метод для межстраничной рекламы
-                    if(isVK) vkBridge.send('VKWebAppShowInterstitial').catch(e=>console.error("Interstitial Ad Error:", e));
+                    // Надежный вызов межстраничной рекламы
+                    if(isVK) {
+                        vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' })
+                                .catch(e=>console.error("Interstitial Ad Error:", e));
+                    }
                 }, 500);
             }
             
             function togglePause() { isPaused = !isPaused; showOverlay(document.getElementById('pause-overlay')); }
             function resumeGame() { isPaused = false; hideOverlay(document.getElementById('pause-overlay')); }
 
-            function activateHammer() {
-                if(isPaused || isGameOver) return;
-                const useHammer = () => {
-                    isHammerModeActive = true;
-                    document.body.classList.add('hammer-mode');
-                };
+            // Надежная логика для Rewarded Ad
+            async function activateHammer() {
+                if(isPaused || isGameOver || document.body.classList.contains('hammer-mode')) return;
+                
+                const hammerButton = document.getElementById('hammer-btn');
+                hammerButton.disabled = true;
+
                 if (isVK) {
-                    // Логика для ревардед рекламы уже была правильной
-                    vkBridge.send('VKWebAppShowRewardAd')
-                        .then(data => { if (data.result) useHammer(); })
-                        .catch(error => console.error("Reward Ad Error:", error));
+                    try {
+                        const adStatus = await vkBridge.send('VKWebAppCheckNativeAds', { ad_format: 'reward' });
+                        if (adStatus.result) {
+                            const adResult = await vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'reward' });
+                            if (adResult.result) {
+                                isHammerModeActive = true;
+                                document.body.classList.add('hammer-mode');
+                            } else {
+                                showToast('Просмотрите рекламу до конца');
+                            }
+                        } else {
+                            showToast('Подсказка пока недоступна');
+                        }
+                    } catch (error) {
+                        console.error('Rewarded ad error:', error);
+                        showToast('Ошибка при показе рекламы');
+                    } finally {
+                        hammerButton.disabled = false;
+                    }
                 } else {
                     console.log("Reward Ad mocked for testing.");
-                    useHammer();
+                    isHammerModeActive = true;
+                    document.body.classList.add('hammer-mode');
+                    hammerButton.disabled = false;
                 }
             }
             
@@ -594,6 +626,21 @@
                         document.body.classList.remove('hammer-mode');
                     }
                 }
+            }
+
+            function showToast(message) {
+                const existingToast = document.querySelector('.toast-notification');
+                if(existingToast) existingToast.remove();
+
+                const toast = document.createElement('div');
+                toast.className = 'toast-notification';
+                toast.textContent = message;
+                document.body.appendChild(toast);
+                setTimeout(() => { toast.classList.add('show'); }, 10);
+                setTimeout(() => { 
+                    toast.classList.remove('show'); 
+                    toast.addEventListener('transitionend', () => toast.remove()); 
+                }, 3000);
             }
 
             function setupEventListeners() {
